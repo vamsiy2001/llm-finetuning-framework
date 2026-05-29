@@ -20,8 +20,8 @@ nltk>=3.8.1
 evaluate>=0.4.1
 sacrebleu>=2.4.0
 
-# LLM-as-Judge
-openai>=1.12.0
+# LLM-as-Judge (Groq — free tier, no credit card needed)
+groq>=0.9.0
 
 # Deployment
 gradio>=4.20.0

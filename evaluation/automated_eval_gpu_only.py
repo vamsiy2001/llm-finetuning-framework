@@ -1,23 +1,18 @@
 """
-Automated Evaluation Pipeline.
+DEPRECATED — use the two-step flow instead:
+  1. evaluation/generate_predictions.py  (GPU/Colab — generates parquets)
+  2. evaluation/compute_metrics.py       (local/CPU — computes ROUGE/BLEU from parquets)
 
-Metrics computed:
-  1. Perplexity         — how confident the model is on test responses
-  2. ROUGE-L            — n-gram overlap with reference responses
-  3. BERTScore          — semantic similarity (embedding-based)
-  4. BLEU               — classic MT metric, used here for response quality
-  5. Intent Accuracy    — does the response address the correct intent?
-     (proxy: classify response with zero-shot classifier)
-  6. Response Length    — avg token count vs reference (verbosity check)
+This script is kept for reference only. It runs model inference AND metric computation
+in one pass, which is too slow on CPU/MPS for 3B models.
 
-Usage:
-    # evaluate a fine-tuned model vs base
-    python evaluation/automated_eval.py \
+Requires CUDA. If you have a GPU machine (not Mac), you can still use it:
+    python evaluation/automated_eval_gpu_only.py \
         --model_path ./outputs/lora_r16 \
         --base_model unsloth/Llama-3.2-3B-Instruct \
         --test_data data/cleaned/test_set.parquet \
-        --output_dir evaluation/results/lora_r16 \
-        --n_samples 200
+        --output_dir evaluation/results/r16 \
+        --n_samples 100
 """
 
 import argparse
@@ -138,9 +133,7 @@ def compute_rouge(predictions: list[str], references: list[str]) -> dict:
 
 def compute_bleu(predictions: list[str], references: list[str]) -> float:
     bleu = load_metric("bleu")
-    tokenized_preds = [p.split() for p in predictions]
-    tokenized_refs = [[r.split()] for r in references]
-    result = bleu.compute(predictions=tokenized_preds, references=tokenized_refs)
+    result = bleu.compute(predictions=predictions, references=references)
     return round(result["bleu"], 4)
 
 
@@ -173,6 +166,7 @@ def evaluate_model(
     output_dir: str,
     n_samples: int = 200,
     label: str = "model",
+    skip_bertscore: bool = False,
 ) -> dict:
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -204,7 +198,7 @@ def evaluate_model(
     # ── automatic metrics ──────────────────────────────────────────────
     rouge_scores = compute_rouge(predictions, references)
     bleu_score = compute_bleu(predictions, references)
-    bert_scores = compute_bertscore(predictions, references)
+    bert_scores = compute_bertscore(predictions, references) if not skip_bertscore else {}
     length_stats = compute_response_length_stats(predictions, references)
 
     results = {
@@ -263,6 +257,7 @@ if __name__ == "__main__":
     parser.add_argument("--test_data", default="data/cleaned/test_set.parquet")
     parser.add_argument("--output_dir", default="evaluation/results")
     parser.add_argument("--n_samples", type=int, default=200)
+    parser.add_argument("--skip_bertscore", action="store_true", help="Skip BERTScore (slow on CPU/MPS)")
     args = parser.parse_args()
 
     all_results = []
@@ -275,6 +270,7 @@ if __name__ == "__main__":
         output_dir=f"{args.output_dir}/finetuned",
         n_samples=args.n_samples,
         label="Fine-tuned",
+        skip_bertscore=args.skip_bertscore,
     )
     all_results.append(ft_results)
 
@@ -286,6 +282,7 @@ if __name__ == "__main__":
         output_dir=f"{args.output_dir}/base",
         n_samples=args.n_samples,
         label="Base",
+        skip_bertscore=args.skip_bertscore,
     )
     all_results.append(base_results)
 

@@ -1,0 +1,16 @@
+{
+  "label": "Base",
+  "model_path": "unsloth/Llama-3.2-3B-Instruct",
+  "n_samples": 20,
+  "perplexity": null,
+  "bleu": 0.0831,
+  "rouge1": 0.3916,
+  "rouge2": 0.1157,
+  "rougeL": 0.2276,
+  "rougeLsum": 0.2672,
+  "avg_pred_length": 99.4,
+  "avg_ref_length": 89.8,
+  "length_ratio": 1.107,
+  "avg_latency_ms": 5352.8,
+  "p95_latency_ms": 8401.8
+}

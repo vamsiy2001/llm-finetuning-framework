@@ -1,0 +1,30 @@
+{
+  "total_rows": 26872,
+  "intents": 27,
+  "categories": 11,
+  "null_counts": {
+    "flags": 0,
+    "instruction": 0,
+    "category": 0,
+    "intent": 0,
+    "response": 0
+  },
+  "flag_distribution": {
+    "B": 26872,
+    "Q": 8968,
+    "Z": 5286,
+    "L": 24115,
+    "C": 2646,
+    "E": 1882,
+    "N": 463,
+    "I": 7839,
+    "M": 4920,
+    "P": 1329,
+    "K": 2227,
+    "V": 77,
+    "W": 1288,
+    "S": 417
+  },
+  "avg_instruction_len": 46.88951324799047,
+  "avg_response_len": 634.1044953855314
+}

@@ -29,6 +29,12 @@ build/
 # wandb
 wandb/
 
+# claude code internals
+.claude/
+
+# evaluation prediction parquets (large — regenerated from Colab)
+evaluation/results/**/*.parquet
+
 # misc
 .DS_Store
 *.log

@@ -1,0 +1,16 @@
+{
+  "label": "Fine-tuned",
+  "model_path": "outputs/customer-support-lora-r16",
+  "n_samples": 20,
+  "perplexity": 3.83,
+  "bleu": 0.2292,
+  "rouge1": 0.5053,
+  "rouge2": 0.2438,
+  "rougeL": 0.3554,
+  "rougeLsum": 0.3542,
+  "avg_pred_length": 92.8,
+  "avg_ref_length": 89.8,
+  "length_ratio": 1.033,
+  "avg_latency_ms": 389799.4,
+  "p95_latency_ms": 778032.0
+}

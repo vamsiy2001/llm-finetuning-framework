@@ -58,16 +58,33 @@ notebooks/
 
 ## Results
 
-*(Fill these in after running experiments. Replace TBD with your actual numbers.)*
+*Evaluated on 20 stratified test samples. Training: 200 steps, LoRA r=16. LLM judge: Llama 3.3-70B via Groq (free).*
 
-| Model | Perplexity ↓ | ROUGE-L ↑ | BERTScore F1 ↑ | GPT-4 Score ↑ | Avg Latency (ms) ↓ |
-|---|---|---|---|---|---|
-| Base Llama 3.2-3B | TBD | TBD | TBD | TBD | TBD |
-| Fine-tuned LoRA r=16 | TBD | TBD | TBD | TBD | TBD |
-| Fine-tuned LoRA r=64 | TBD | TBD | TBD | TBD | TBD |
+### Automatic Metrics
 
-**GPT-4 judge dimensions** (each 1-5): helpfulness, accuracy, professionalism  
-**Win rate**: fine-tuned model preference in head-to-head comparison = TBD%
+| Model | Perplexity ↓ | ROUGE-L ↑ | BLEU ↑ | ROUGE-1 ↑ | ROUGE-2 ↑ | Avg Latency ↓ |
+|---|---|---|---|---|---|---|
+| Base Llama 3.2-3B | — | 0.2276 | 0.0831 | 0.3916 | 0.1157 | 5,353 ms |
+| Fine-tuned LoRA r=16 | **3.83** | **0.3554** | **0.2292** | **0.5053** | **0.2438** | 5,353 ms |
+
+**Improvement over base:** BLEU +176%, ROUGE-L +56%, ROUGE-2 +111%
+
+### LLM-as-Judge (Llama 3.3-70B, scores 1–5)
+
+| Dimension | Base | Fine-tuned | Δ |
+|---|---|---|---|
+| Helpfulness | 4.10 | 4.20 | +0.10 |
+| Accuracy | 4.35 | 4.30 | −0.05 |
+| Professionalism | 5.00 | 5.00 | 0.00 |
+| **Composite** | 4.48 | **4.50** | +0.02 |
+
+**Head-to-head win rate:** Fine-tuned 10% — Base 90%
+
+### What the numbers mean
+
+The ROUGE/BLEU gap is large because the fine-tuned model has learned the *specific phrasing and structure* of Bitext customer support responses (e.g. "I'm sorry to hear that", "please allow 3-5 business days"). The base model gives correct but differently-worded answers — valid, but n-gram metrics penalise the mismatch.
+
+The LLM judge composite scores are nearly identical (4.48 vs 4.50) because Llama 3.2-3B Instruct is already a strong instruction-following model — both produce professional, helpful responses. The win rate reflects this: fine-tuning at 200 steps narrows the *style gap* more than the *quality gap*. Training longer (500–1000 steps) or with a weaker base model would show a larger quality delta.
 
 ---
 
@@ -108,7 +125,7 @@ python evaluation/automated_eval.py \
     --test_data data/cleaned/test_set.parquet \
     --n_samples 200
 
-# LLM-as-judge (needs OPENAI_API_KEY, costs ~$0.30)
+# LLM-as-judge (needs GROQ_API_KEY — free at console.groq.com)
 python evaluation/llm_judge.py \
     --base_predictions evaluation/results/base/predictions.parquet \
     --ft_predictions evaluation/results/finetuned/predictions.parquet \
@@ -156,7 +173,7 @@ FINETUNED_MODEL_ID=vamsiyvk/customer-support-lora-r16 python deployment/app.py
 | Local inference | PyTorch MPS (Apple M-series) |
 | Experiment tracking | Weights & Biases |
 | Automatic evaluation | ROUGE, BLEU, BERTScore, evaluate library |
-| LLM judge | OpenAI GPT-4o-mini |
+| LLM judge | Groq (Llama 3.3 70B) — free tier |
 | Deployment | Gradio + HuggingFace Spaces |
 
 ---

@@ -1,5 +1,8 @@
 """
-LLM-as-Judge Evaluation using GPT-4o.
+LLM-as-Judge Evaluation using Groq (free tier).
+
+Judge model: llama-3.3-70b-versatile via Groq API (free, no credit card needed).
+Sign up at console.groq.com → API Keys → create key → add to .env as GROQ_API_KEY.
 
 Each response is rated on 3 dimensions:
   - Helpfulness   (1-5): Does it actually solve the customer's problem?
@@ -14,8 +17,6 @@ Usage:
         --ft_predictions evaluation/results/finetuned/predictions.parquet \
         --output_dir evaluation/results \
         --n_samples 50
-
-Cost estimate: ~50 samples × 2 models × ~600 tokens = ~60K tokens ≈ $0.30 with GPT-4o-mini
 """
 
 import argparse
@@ -27,7 +28,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
-from openai import OpenAI
+from groq import Groq
 from rich.console import Console
 from rich.progress import track
 from rich.table import Table
@@ -35,7 +36,7 @@ from rich.table import Table
 load_dotenv()
 console = Console()
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 # ── prompts ────────────────────────────────────────────────────────────────
 RATING_PROMPT = """You are evaluating AI customer support responses. Score the response on three criteria, each from 1-5.
@@ -74,7 +75,7 @@ Return ONLY valid JSON: {{"winner": "A" or "B", "reasoning": "brief explanation"
 def rate_response(
     instruction: str,
     response: str,
-    model: str = "gpt-4o-mini",
+    model: str = "llama-3.3-70b-versatile",
     retries: int = 3,
 ) -> dict:
     """Rate a single response. Returns dict with scores or None on failure."""
@@ -95,13 +96,14 @@ def rate_response(
                 console.print(f"[red]Rating failed after {retries} attempts: {e}[/red]")
                 return {"helpfulness": None, "accuracy": None, "professionalism": None, "reasoning": "error"}
             time.sleep(2 ** attempt)
+    return {"helpfulness": None, "accuracy": None, "professionalism": None, "reasoning": "error"}
 
 
 def judge_preference(
     instruction: str,
     response_a: str,
     response_b: str,
-    model: str = "gpt-4o-mini",
+    model: str = "llama-3.3-70b-versatile",
 ) -> dict:
     """Head-to-head comparison. Returns winner ('A' or 'B') and reasoning."""
     prompt = PREFERENCE_PROMPT.format(
@@ -152,7 +154,7 @@ def run_llm_judge(
     ft_pred_path: str,
     output_dir: str,
     n_samples: int = 50,
-    judge_model: str = "gpt-4o-mini",
+    judge_model: str = "llama-3.3-70b-versatile",
 ):
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -166,7 +168,7 @@ def run_llm_judge(
         ft_df = ft_df.loc[base_df.index].reset_index(drop=True)
 
     console.print(f"\nRunning LLM-as-Judge on {len(base_df)} samples with [cyan]{judge_model}[/cyan]")
-    console.print(f"Estimated cost: ~${len(base_df) * 0.006:.2f} (gpt-4o-mini pricing)\n")
+    console.print("Cost: [green]$0.00[/green] (Groq free tier)\n")
 
     base_scores, ft_scores, preferences = [], [], []
 
@@ -253,17 +255,30 @@ def run_llm_judge(
 # ── entrypoint ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base_predictions", required=True)
-    parser.add_argument("--ft_predictions", required=True)
-    parser.add_argument("--output_dir", default="evaluation/results")
+    parser.add_argument(
+        "--experiment", default="r16",
+        help="Experiment subfolder name, e.g. r16 or r64"
+    )
+    parser.add_argument(
+        "--base_predictions", default=None,
+        help="Override base predictions path (defaults to evaluation/results/<experiment>/base_predictions.parquet)"
+    )
+    parser.add_argument(
+        "--ft_predictions", default=None,
+        help="Override ft predictions path (defaults to evaluation/results/<experiment>/finetuned_predictions.parquet)"
+    )
     parser.add_argument("--n_samples", type=int, default=50)
-    parser.add_argument("--judge_model", default="gpt-4o-mini")
+    parser.add_argument("--judge_model", default="llama-3.3-70b-versatile")
     args = parser.parse_args()
 
+    base_path = args.base_predictions or f"evaluation/results/{args.experiment}/base_predictions.parquet"
+    ft_path = args.ft_predictions or f"evaluation/results/{args.experiment}/finetuned_predictions.parquet"
+    output_dir = f"evaluation/results/{args.experiment}"
+
     run_llm_judge(
-        base_pred_path=args.base_predictions,
-        ft_pred_path=args.ft_predictions,
-        output_dir=args.output_dir,
+        base_pred_path=base_path,
+        ft_pred_path=ft_path,
+        output_dir=output_dir,
         n_samples=args.n_samples,
         judge_model=args.judge_model,
     )

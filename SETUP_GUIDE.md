@@ -1,94 +1,158 @@
-# Setup & Run Guide (4-hour sprint)
+# Setup & Run Guide
 
-## Hour 1 — GitHub + Data
+## Two-zone architecture
+
+| Zone | Where | What runs there |
+|---|---|---|
+| **Colab** (GPU) | Google Colab T4 | Training + generating predictions |
+| **Local** (CPU) | Your Mac | Data prep, metric computation, LLM judge, deployment |
+
+Nothing that loads a 3B model runs locally. Colab does all the heavy lifting and hands you two parquet files. Everything after that is fast on CPU.
+
+---
+
+## Step 1 — One-time local setup
 
 ```bash
-# 1. Move project to your dev folder
-cp -r llm-finetuning-framework ~/projects/llm-finetuning-framework
-cd ~/projects/llm-finetuning-framework
+git clone https://github.com/vamsiyvk/llm-finetuning-framework
+cd llm-finetuning-framework
 
-# 2. Git init + first push
-git init
-git add .
-git commit -m "feat: initial project scaffold — customer support LLM fine-tuning"
-
-# On GitHub: create new repo named llm-finetuning-framework (no README, no .gitignore)
-git remote add origin https://github.com/vamsiyvk/llm-finetuning-framework.git
-git branch -M main
-git push -u origin main
-
-# 3. Create .env from template
-cp .env.example .env
-# edit .env and fill in WANDB_API_KEY, HF_TOKEN, OPENAI_API_KEY
-
-# 4. Install deps (use a venv)
-python -m venv venv && source venv/bin/activate
+python -m venv llm_finetune && source llm_finetune/bin/activate
 pip install -r requirements.txt
 
-# 5. Run data pipeline (takes ~2 mins, no GPU needed)
+cp .env.example .env
+# fill in: WANDB_API_KEY, GROQ_API_KEY, HF_TOKEN
+```
+
+Get free keys:
+- **W&B**: wandb.ai → Settings → API Keys
+- **Groq**: console.groq.com → API Keys (free, no card)
+- **HF**: huggingface.co → Settings → Access Tokens → New token (role: **Write**)
+
+---
+
+## Step 2 — Data pipeline (local, ~2 min, no GPU)
+
+```bash
 python data/download_and_clean.py
-# → creates data/cleaned/ and data/analysis/eda_overview.png
-```
-
-## Hour 2 — Training on Colab
-
-1. Open `notebooks/colab_training.ipynb` in Google Colab
-2. Runtime → Change runtime type → **T4 GPU**
-3. Left sidebar 🔑 → Add secrets: `WANDB_API_KEY`, `HF_TOKEN`
-4. Run all cells (Ctrl+F9)
-5. While it trains (~25 mins for 200 steps), check your W&B dashboard live
-
-After training:
-- Download `test_set.parquet` from the Colab file browser
-- Save it to `data/cleaned/test_set.parquet` on your local machine
-- Model gets auto-pushed to `https://huggingface.co/vamsiyvk/customer-support-lora-r16`
-
-## Hour 3 — Evaluation
-
-```bash
-# automatic metrics (runs on CPU/MPS, ~20 mins for 200 samples)
-python evaluation/automated_eval.py \
-    --model_path vamsiyvk/customer-support-lora-r16 \
-    --test_data data/cleaned/test_set.parquet \
-    --output_dir evaluation/results \
-    --n_samples 200
-
-# LLM-as-judge (needs OPENAI_API_KEY, costs ~$0.30)
-python evaluation/llm_judge.py \
-    --base_predictions evaluation/results/base/predictions.parquet \
-    --ft_predictions evaluation/results/finetuned/predictions.parquet \
-    --n_samples 50
-
-# update README with your real numbers from evaluation/results/comparison.json
-```
-
-## Hour 4 — Deploy + Polish
-
-```bash
-# test Gradio app locally
-FINETUNED_MODEL_ID=vamsiyvk/customer-support-lora-r16 python deployment/app.py
-
-# deploy to HuggingFace Spaces:
-# 1. Go to huggingface.co/new-space
-# 2. Name: customer-support-llm | SDK: Gradio | Hardware: CPU Basic (free)
-# 3. git clone your Space repo, copy deployment/app.py → app.py + requirements.txt
-# 4. Add env var FINETUNED_MODEL_ID in Space settings
-# 5. git push → auto-deploys
-
-# final GitHub push with results
-git add .
-git commit -m "feat: evaluation results + deployed to HuggingFace Spaces"
-git push
+# → data/cleaned/customer_support_dataset/   (HuggingFace DatasetDict)
+# → data/cleaned/test_set.parquet            (held-out test split)
+# → data/analysis/eda_overview.png           (EDA charts)
 ```
 
 ---
 
-## What to say about this project in interviews
+## Step 3 — Train on Colab
 
-**The data angle**: "The dataset has quality flags marking responses as 'basic' or 'keyword-stuffed'. I analyzed the distribution, documented each cleaning decision, and kept flagged rows separate so I could check if they hurt eval metrics — they did."
+1. Open `notebooks/colab_training.ipynb` in Google Colab
+2. Runtime → Change runtime type → **T4 GPU**
+3. Left sidebar 🔑 Secrets → add `WANDB_API_KEY` and `HF_TOKEN`
+4. In **cell 4**, set `LORA_RANK = 16` (first run) or `64` (second run)
+5. Run all cells (Ctrl+F9) — takes ~30 min for 200 steps
 
-**The eval angle**: "ROUGE tells you n-gram overlap, not whether the model actually solved the customer's problem. I added GPT-4-as-judge to measure helpfulness, accuracy, and professionalism independently — the scores didn't always agree with ROUGE, which is the whole point."
+### What the notebook does automatically:
+- Trains the model and logs to W&B
+- Saves the model and (optionally) pushes to HuggingFace Hub
+- Generates predictions for **both base and fine-tuned** on the test set (cell 12)
+- Downloads everything in one go (cell 13)
 
-**The experiment design angle**: "I ran r=16 and r=64 as controlled experiments — same dataset, same training steps, different LoRA rank. The YAML configs are version-controlled so anyone can reproduce either run from a single command."
+### Files to download from cell 13:
+| File | Place it at |
+|---|---|
+| `finetuned_predictions.parquet` | `evaluation/results/r16/finetuned_predictions.parquet` |
+| `base_predictions.parquet` | `evaluation/results/r16/base_predictions.parquet` |
+| `test_set.parquet` | `data/cleaned/test_set.parquet` |
+| `customer-support-lora-r16.zip` | unzip → `outputs/customer-support-lora-r16/` |
 
-**The production angle**: "The Gradio app collects user preferences as feedback. That data feeds back into future training — it's a basic RLHF loop."
+---
+
+## Step 4 — Evaluate (local, ~2 min, no GPU)
+
+```bash
+# ROUGE, BLEU, length stats — from saved parquets, no model needed
+python evaluation/compute_metrics.py --experiment r16
+
+# LLM-as-judge — Groq API calls, costs $0.00
+python evaluation/llm_judge.py --experiment r16
+```
+
+Results saved to `evaluation/results/r16/`.
+
+---
+
+## Step 5 — Repeat for r=64
+
+1. In Colab cell 4, change `LORA_RANK = 64`
+2. Run all cells again (~30 min)
+3. Download files, place at `evaluation/results/r64/`
+4. Run:
+```bash
+python evaluation/compute_metrics.py --experiment r64
+python evaluation/llm_judge.py --experiment r64
+```
+
+---
+
+## Step 6 — Deploy Gradio app
+
+```bash
+# test locally
+FINETUNED_MODEL_ID=vamsiyvk/customer-support-lora-r16 python deployment/app.py
+```
+
+Deploy to HuggingFace Spaces:
+1. huggingface.co/new-space → name: `customer-support-llm` | SDK: Gradio | Hardware: CPU Basic
+2. Clone the Space repo, copy `deployment/app.py` → `app.py` and `requirements.txt`
+3. Space Settings → Variables → add `FINETUNED_MODEL_ID=vamsiyvk/customer-support-lora-r16`
+4. `git push` → auto-deploys
+
+---
+
+## Optional extras
+
+```bash
+# interactive agent with tool calling (order lookup, refunds, etc.)
+python agent/support_agent.py --model_id vamsiyvk/customer-support-lora-r16
+
+# latency benchmark on your Mac
+python inference/benchmark.py --benchmark --n_prompts 20
+
+# run tests
+python -m pytest tests/ -v
+```
+
+---
+
+## File reference
+
+```
+data/
+  download_and_clean.py     ← Step 2: run locally
+  cleaned/                  ← output of step 2
+
+notebooks/
+  colab_training.ipynb      ← Step 3: run on Colab
+
+evaluation/
+  generate_predictions.py   ← GPU script (called from notebook cell 12)
+  compute_metrics.py        ← Step 4a: run locally after downloading parquets
+  llm_judge.py              ← Step 4b: run locally (Groq API)
+  results/
+    r16/                    ← predictions + metrics from first experiment
+    r64/                    ← predictions + metrics from second experiment
+
+experiments/
+  configs/lora_r16.yaml     ← config for CLI training (GPU machine)
+  configs/lora_r64.yaml
+  run_experiment.py         ← CLI alternative to notebook (needs CUDA)
+
+deployment/
+  app.py                    ← Gradio comparison app
+
+inference/
+  benchmark.py              ← Local latency benchmarking
+
+agent/
+  support_agent.py          ← Interactive agent with tool use
+  tools/                    ← Mock order/account tools
+```
